@@ -13,7 +13,7 @@ type Result = { passed: boolean; percent: number; correctCount: number; totalQue
 function ProvjeraContent() {
   const searchParams = useSearchParams();
   const kind = (searchParams.get("kind") ?? "segment") as "segment" | "topic" | "final";
-  const scopeId = searchParams.get("id") ?? "";
+  const scopeId = searchParams.get("scopeExternalId") ?? "";
 
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [selected, setSelected] = useState<Record<string, string[]>>({});

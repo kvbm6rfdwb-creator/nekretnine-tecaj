@@ -45,7 +45,7 @@ export default function UcenjePage() {
                         {prog && prog.bestPercent > 0 && <span className="ml-2 text-blue-500">{prog.bestPercent}%</span>}
                       </div>
                     </div>
-                    {!isLocked && <Link href={`/provjera?kind=segment&id=${seg.externalId}`} className="text-xs text-blue-600 hover:underline flex-shrink-0">Test</Link>}
+                    {!isLocked && <Link href={`/provjera?kind=segment&scopeExternalId=${seg.externalId}`} className="text-xs text-blue-600 hover:underline flex-shrink-0">Test</Link>}
                   </div>
                 );
               })}
