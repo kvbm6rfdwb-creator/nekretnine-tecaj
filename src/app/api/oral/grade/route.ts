@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { gradeOralAnswer } from "@/lib/oral/service";
+import { gradeOralAnswer, finaliseBatchAttempt } from "@/lib/oral/service";
 import { DEFAULT_USER_ID } from "@/lib/progress/service";
 import { OralProviderUnavailableError } from "@/lib/ai/oral-provider";
 
@@ -40,18 +40,21 @@ export async function POST(req: NextRequest) {
     }> = [];
 
     for (const { questionExternalId, answer } of answers) {
-      // gradeOralAnswer now runs in batch-mode: no early-fail side-effects
       const result = await gradeOralAnswer(
         DEFAULT_USER_ID,
         oralExamAttemptId,
         questionExternalId,
         answer,
-        true // batchMode flag — service skips interim attempt status updates
+        true // batchMode: service skips interim attempt status updates
       );
       results.push({ questionExternalId, evaluation: result.evaluation });
     }
 
     const passed = results.every((r) => r.evaluation.isCorrect);
+
+    // Persist final attempt status and unlock oral progress key if passed
+    await finaliseBatchAttempt(DEFAULT_USER_ID, oralExamAttemptId, passed);
+
     return NextResponse.json({ passed, results });
   } catch (error) {
     if (error instanceof OralProviderUnavailableError)
