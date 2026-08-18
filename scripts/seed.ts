@@ -34,6 +34,9 @@ async function main() {
 
   let questionCount = 0, slideCount = 0, segmentCount = 0, oralQCount = 0;
 
+  // Collect all final-exam question rows so we can build one global collection after the topic loop.
+  const finalExamQuestionIds: string[] = [];
+
   for (const [ti, topic] of content.topics.entries()) {
     const topicId = createId("topic");
     db.insert(schema.topics).values({
@@ -45,6 +48,7 @@ async function main() {
       finalExamWeight: Math.round(topic.weight_for_final_exam)
     }).run();
 
+    // ── Topic-test collection ────────────────────────────────────────────────
     const topicTestCollectionId = createId("qc");
     db.insert(schema.questionCollections).values({
       id: topicTestCollectionId,
@@ -67,23 +71,23 @@ async function main() {
       questionCount++;
     }
 
-    const finalExamCollectionId = createId("qc");
-    db.insert(schema.questionCollections).values({
-      id: finalExamCollectionId, packageId, topicId, segmentId: null,
-      kind: "final_exam_pool", passThresholdPercent: content.assessment_rules.segment_and_topic_pass_threshold_percent
-    }).run();
+    // ── Final-exam pool: insert questions but defer collection creation ───────
+    // Questions are tagged with topicId for FK integrity / potential analytics.
+    // They will be added to the SINGLE global final_exam collection below.
     for (const [qi, q] of topic.final_exam_pool.entries()) {
       const questionId = createId("q");
       db.insert(schema.questions).values({
-        id: questionId, packageId, topicId, segmentId: null, externalId: `fe_${topic.id}_${q.id}_${qi}`,
+        id: questionId, packageId, topicId, segmentId: null,
+        externalId: `fe_${topic.id}_${q.id}_${qi}`,
         prompt: q.prompt, questionType: q.type, options: JSON.stringify(q.options),
         correctAnswers: JSON.stringify(q.correct_answers), explanation: q.explanation,
         citations: JSON.stringify(q.citations)
       }).run();
-      db.insert(schema.questionCollectionItems).values({ collectionId: finalExamCollectionId, questionId, position: qi }).run();
+      finalExamQuestionIds.push(questionId);
       questionCount++;
     }
 
+    // ── Segments ─────────────────────────────────────────────────────────────
     for (const [si, seg] of topic.segments.entries()) {
       const segmentId = createId("seg");
       db.insert(schema.segments).values({
@@ -119,6 +123,23 @@ async function main() {
     }
   }
 
+  // ── ONE global final_exam questionCollection (topicId=null, segmentId=null) ──
+  // scopeExternalId used by /api/attempts/generate for kind="final_exam" is "final_exam".
+  const finalExamCollectionId = createId("qc");
+  db.insert(schema.questionCollections).values({
+    id: finalExamCollectionId,
+    packageId,
+    topicId: null,
+    segmentId: null,
+    kind: "final_exam",
+    passThresholdPercent: content.assessment_rules.segment_and_topic_pass_threshold_percent
+  }).run();
+  for (const [pos, questionId] of finalExamQuestionIds.entries()) {
+    db.insert(schema.questionCollectionItems).values({ collectionId: finalExamCollectionId, questionId, position: pos }).run();
+  }
+  console.log(`Inserted global final_exam collection with ${finalExamQuestionIds.length} questions`);
+
+  // ── Oral professors ───────────────────────────────────────────────────────
   const topicRows = db.select().from(schema.topics).all();
   const topicExternalToId = new Map(topicRows.map((t) => [t.externalId, t.id]));
 
@@ -139,7 +160,7 @@ async function main() {
     }
   }
 
-  console.log(`Seeded: ${content.topics.length} topics, ${segmentCount} segments, ${slideCount} slides, ${questionCount} questions, ${content.oral_professors.length} professors, ${oralQCount} oral questions.`);
+  console.log(`Seeded: ${content.topics.length} topics, ${segmentCount} segments, ${slideCount} slides, ${questionCount} questions (incl. ${finalExamQuestionIds.length} final-exam pool), ${content.oral_professors.length} professors, ${oralQCount} oral questions.`);
   sqlite.close();
 }
 
